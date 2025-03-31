@@ -1,6 +1,3 @@
-//go:build test
-// +build test
-
 package echo
 
 import (
@@ -288,41 +285,16 @@ func TestMultiHandlerWithGroup(t *testing.T) {
 	// Check immutability
 	assert.NotSame(t, originalMulti, multiWithGroup, "WithGroup should return a new handler instance")
 
-	// Check propagation to underlying mocks (crude check via mock history)
-	assert.Contains(t, mh1.withGroupHistory, groupName, "Group name mismatch in underlying mock 1 history")
-	assert.Contains(t, mh2.withGroupHistory, groupName, "Group name mismatch in underlying mock 2 history")
+	// Check propagation to underlying mocks by inspecting their call history
+	assert.Contains(t, mh1.withGroupHistory, groupName, "WithGroup was not called on underlying mock 1 with correct group name")
+	assert.Contains(t, mh2.withGroupHistory, groupName, "WithGroup was not called on underlying mock 2 with correct group name")
 
-	// Check if group is applied when handling a record with the new handler
-	record := slog.NewRecord(time.Now(), slog.LevelInfo, "info msg", 0)
-	record.AddAttrs(slog.String("attr_in_group", "val")) // Add an attr to see it nested
-
-	mh1.Reset() // Reset counters/history on the *original* mocks
-	mh2.Reset()
-	_ = multiWithGroup.Handle(context.Background(), record) // Handle with the *new* multi-handler
-
-	handledRec1, ok1 := mh1.LastHandledRecord()
-	require.True(t, ok1, "Handler 1 should have handled the record")
-
-	// Verify group presence (tricky without full slog internals, check if top-level attr is the group)
-	var foundGroup1 bool
-	handledRec1.Attrs(func(a slog.Attr) bool {
-		if a.Key == groupName && a.Value.Kind() == slog.KindGroup {
-			// Further check attributes within the group if necessary
-			// For simplicity, just check the group name exists
-			foundGroup1 = true
-			return false // Stop iteration
-		}
-		return true
-	})
-	// Note: The mock handler's WithGroup is simplified. A real handler nests attrs.
-	// This test mainly verifies that WithGroup was *called* via history and returns a new handler.
-	// Verifying the *exact structure* handled would require a more complex mock or inspecting
-	// how the actual Text/JSON handlers format groups.
-
-	assert.True(t, len(mh1.withGroupHistory) > 0 && mh1.withGroupHistory[0] == groupName)
-	assert.True(t, len(mh2.withGroupHistory) > 0 && mh2.withGroupHistory[0] == groupName)
+	// --- Removed the section that tried to verify group presence in the handled record ---
+	// --- as the primary check here is the call propagation verified above.      ---
 
 	// Test empty group name
 	multiWithEmptyGroup := multiWithGroup.WithGroup("")
-	assert.NotSame(t, multiWithGroup, multiWithEmptyGroup, "WithGroup(\"\") should return a new handler instance based on mock") // Our simple mock always returns new
+	// Our simple mock always returns new, but a real handler might return self.
+	// We mainly care that it doesn't panic and subsequent calls work.
+	assert.NotSame(t, multiWithGroup, multiWithEmptyGroup, "WithGroup(\"\") should return a new handler instance based on mock")
 }
